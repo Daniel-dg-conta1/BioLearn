@@ -1,0 +1,5 @@
+{
+  "name": "BioLearn",
+  "description": "A comprehensive Biology education platform featuring a student dashboard, course modules, glossary, quiz creator, games arena, resource library, news feed, and community forum.",
+  "requestFramePermissions": []
+}
