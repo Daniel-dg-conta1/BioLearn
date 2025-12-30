@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NAV_ITEMS, CURRENT_USER, DASHBOARD_STATS, MODULES, GLOSSARY_TERMS, NEWS_ITEMS, DISCUSSIONS } from './constants';
-import { Module, Term, Question } from './types';
+import { Module, Term, Question, EnemQuestion, EnemExam } from './types';
 
 // Icons using Material Symbols
 const Icon = ({ name, className = "" }: { name: string; className?: string }) => (
@@ -143,7 +143,6 @@ const Dashboard = () => {
 };
 
 const Modules = () => {
-    // This matches Screen 2 structure
   return (
     <div className="space-y-6">
        <nav className="flex mb-6 text-sm">
@@ -192,7 +191,6 @@ const Modules = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Extended modules for this view */}
             {[
                 { ...MODULES[0], type: 'video' as const, category: 'Genética', title: 'Replicação e Reparo do DNA', desc: 'Entendendo os mecanismos moleculares da replicação do DNA e como erros são corrigidos.' },
                 { ...MODULES[1], type: 'quiz' as const, category: 'Anatomia', title: 'Sistema Cardiovascular Humano', desc: 'Explore a estrutura do coração, vasos sanguíneos e circulação sistêmica.' },
@@ -301,6 +299,355 @@ const Glossary = () => {
 }
 
 const QuizCreator = () => {
+    const [activeTab, setActiveTab] = useState<'manual' | 'ai' | 'enem'>('manual');
+    const [enemQuestions, setEnemQuestions] = useState<EnemQuestion[]>([]);
+    const [enemExams, setEnemExams] = useState<EnemExam[]>([]);
+    const [selectedExamId, setSelectedExamId] = useState<string>('');
+    const [isLoadingEnem, setIsLoadingEnem] = useState(false);
+    const [isUsingFallback, setIsUsingFallback] = useState(false);
+    const [enemSearchTerm, setEnemSearchTerm] = useState('');
+    const [quizQuestions, setQuizQuestions] = useState<Question[]>([
+        {
+            id: 1,
+            text: 'Exemplo de questão 1 sobre biologia celular?',
+            type: 'Múltipla Escolha',
+            difficulty: 'Médio',
+            points: 10
+        }
+    ]);
+
+    useEffect(() => {
+        if (activeTab === 'enem' && enemExams.length === 0) {
+            fetchEnemExams();
+        }
+    }, [activeTab]);
+
+    const fetchEnemExams = async () => {
+        try {
+            // Tenta buscar a lista de provas
+            const response = await fetch('https://api.enem.dev/v1/exams');
+            if (response.ok) {
+                const data = await response.json();
+                setEnemExams(data);
+            } else {
+                throw new Error("Falha ao buscar provas");
+            }
+        } catch (error) {
+            console.warn("API de Provas indisponível, usando mock.", error);
+            // Fallback para lista de provas caso a API falhe
+            setEnemExams([
+                { id: 10, year: 2023, color: 'Azul', type: 'Regular' },
+                { id: 9, year: 2022, color: 'Amarelo', type: 'Regular' },
+                { id: 8, year: 2021, color: 'Branco', type: 'Digital' },
+                { id: 7, year: 2020, color: 'Rosa', type: 'Digital' },
+            ]);
+        }
+    };
+
+    const fetchEnemQuestions = async (isViewAll = false) => {
+        setIsLoadingEnem(true);
+        setIsUsingFallback(false);
+        if (isViewAll) {
+            setEnemSearchTerm('');
+            setSelectedExamId('');
+        }
+        
+        try {
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            const searchTermToUse = isViewAll ? '' : enemSearchTerm;
+            const limit = isViewAll ? 50 : 15;
+            
+            // Construção da URL: se tiver ID de prova selecionado, usa endpoint específico
+            let url = '';
+            if (selectedExamId && !isViewAll) {
+                url = `https://api.enem.dev/v1/exams/${selectedExamId}/questions?limit=${limit}`;
+            } else {
+                url = `https://api.enem.dev/v1/exams/questions?limit=${limit}`;
+            }
+
+            if (searchTermToUse) {
+                url += `&search=${searchTermToUse}`;
+            }
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('API não acessível');
+                
+                const data = await response.json();
+                
+                if (Array.isArray(data) && data.length > 0) {
+                     setEnemQuestions(data);
+                     return;
+                } else {
+                    throw new Error('Lista vazia');
+                }
+            } catch (apiError) {
+                console.warn("API do ENEM indisponível ou bloqueada, usando dados de fallback.", apiError);
+                throw apiError; // Re-throw to catch block below
+            }
+
+        } catch (error) {
+            console.error("Erro crítico ao buscar ENEM, ativando fallback:", error);
+            setIsUsingFallback(true);
+            
+            // Dados de Fallback (Mock) EXPANDIDO
+            const fallbackQuestions: EnemQuestion[] = [
+                 {
+                    id: 1001,
+                    year: 2023,
+                    title: "Ecologia - Manguezais",
+                    description: "Os manguezais são ecossistemas costeiros de transição entre os ambientes terrestre e marinho. O solo desses ambientes é caracterizado por ser lodoso, salgado e pobre em oxigênio. As plantas que habitam esse ambiente desenvolveram adaptações fisiológicas e morfológicas para sobreviverem a essas condições. Uma dessas adaptações são as raízes respiratórias, denominadas pneumatóforos.\n\nA função principal dessas estruturas é:",
+                    alternatives: {
+                        a: "Realizar a fotossíntese.",
+                        b: "Absorver nutrientes do solo.",
+                        c: "Permitir a troca gasosa com a atmosfera.",
+                        d: "Fixar a planta no solo lodoso.",
+                        e: "Eliminar o excesso de sal absorvido."
+                    },
+                    correct_answer: "C",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1002,
+                    year: 2022,
+                    title: "Genética - DNA",
+                    description: "O ácido desoxirribonucleico (DNA) é uma molécula orgânica que contém as instruções genéticas usadas no desenvolvimento e funcionamento de todos os organismos vivos conhecidos e muitos vírus. O principal papel do DNA é armazenar as informações necessárias para a construção das proteínas e RNA. Os segmentos de DNA que contêm essa informação genética são chamados de genes.\n\nA estrutura do DNA é descrita como:",
+                    alternatives: {
+                        a: "Uma fita simples de nucleotídeos.",
+                        b: "Uma dupla hélice formada por duas cadeias de nucleotídeos antiparalelas.",
+                        c: "Uma cadeia polipeptídica linear.",
+                        d: "Um polímero ramificado de aminoácidos.",
+                        e: "Uma estrutura globular compacta."
+                    },
+                    correct_answer: "B",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1003,
+                    year: 2021,
+                    title: "Imunologia - Vacinação",
+                    description: "A vacinação é uma das formas mais eficazes de prevenir doenças infecciosas. As vacinas atuam estimulando o sistema imunológico a produzir defesas específicas contra patógenos. Existem diferentes tipos de vacinas, como as de vírus atenuados, inativados ou de subunidades.\n\nO princípio imunológico que garante a proteção a longo prazo após a vacinação é a formação de:",
+                    alternatives: {
+                         a: "Anticorpos inespecíficos.",
+                         b: "Células de memória imunológica.",
+                         c: "Barreiras físicas na pele.",
+                         d: "Macrófagos fagocitários.",
+                         e: "Proteínas do sistema complemento."
+                    },
+                    correct_answer: "B",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1004,
+                    year: 2020,
+                    title: "Ecologia - Fragmentação",
+                    description: "A fragmentação dos habitats é um dos principais impactos causados pelo desmatamento. Nesse processo, uma área contínua de vegetação é dividida em áreas menores, isoladas umas das outras. Esse isolamento afeta a biodiversidade local de várias formas.\n\nUma consequência direta e imediata da fragmentação de habitats para as populações animais é:",
+                    alternatives: {
+                        a: "O aumento do fluxo gênico entre as populações.",
+                        b: "A diminuição da endogamia nas populações isoladas.",
+                        c: "A redução da área de vida disponível para as espécies.",
+                        d: "O surgimento imediato de novas espécies.",
+                        e: "O aumento da variabilidade genética."
+                    },
+                    correct_answer: "C",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1005,
+                    year: 2019,
+                    title: "Ciclo do Nitrogênio",
+                    description: "O nitrogênio é um elemento essencial para a vida e faz parte da constituição de proteínas e ácidos nucleicos. A maior parte do nitrogênio está na atmosfera na forma de gás N2, que não é assimilável pela maioria dos seres vivos. A fixação biológica do nitrogênio é realizada por certas bactérias.\n\nAs bactérias do gênero Rhizobium, que vivem em simbiose com leguminosas, atuam no ciclo do nitrogênio convertendo:",
+                    alternatives: {
+                        a: "Amônia em nitrito.",
+                        b: "Nitrito em nitrato.",
+                        c: "Nitrato em nitrogênio gasoso.",
+                        d: "Nitrogênio gasoso em amônia.",
+                        e: "Amônia em aminoácidos."
+                    },
+                    correct_answer: "D",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1006,
+                    year: 2021,
+                    title: "Citologia - Membrana Plasmática",
+                    description: "A membrana plasmática é uma estrutura essencial para a célula, delimitando-a e controlando o que entra e sai. O modelo do mosaico fluido descreve a membrana como uma bicamada lipídica com proteínas inseridas.\n\nQual componente da membrana é responsável principal pelo reconhecimento celular?",
+                    alternatives: {
+                        a: "Fosfolipídios.",
+                        b: "Glicocálix (carboidratos).",
+                        c: "Colesterol.",
+                        d: "Proteínas integrais.",
+                        e: "Citoesqueleto."
+                    },
+                    correct_answer: "B",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1007,
+                    year: 2020,
+                    title: "Biotecnologia - Transgênicos",
+                    description: "Organismos geneticamente modificados (OGMs) são criados pela inserção de genes de uma espécie no DNA de outra. Na agricultura, plantas transgênicas são frequentemente desenvolvidas para resistir a pragas.\n\nUma preocupação ambiental associada ao cultivo de plantas transgênicas resistentes a herbicidas é:",
+                    alternatives: {
+                        a: "A diminuição da produtividade agrícola.",
+                        b: "O aumento da necessidade de irrigação.",
+                        c: "O surgimento de 'superervas daninhas' resistentes.",
+                        d: "A contaminação do solo por metais pesados.",
+                        e: "A redução da diversidade genética da cultura."
+                    },
+                    correct_answer: "C",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1008,
+                    year: 2018,
+                    title: "Fisiologia - Sistema Circulatório",
+                    description: "O coração humano possui quatro câmaras: dois átrios e dois ventrículos. O sangue venoso chega ao coração e é bombeado para os pulmões, enquanto o sangue arterial retorna dos pulmões e é distribuído para o corpo.\n\nQual vaso sanguíneo transporta sangue rico em oxigênio do pulmão para o coração?",
+                    alternatives: {
+                        a: "Artéria pulmonar.",
+                        b: "Veia cava.",
+                        c: "Artéria aorta.",
+                        d: "Veia pulmonar.",
+                        e: "Veia jugular."
+                    },
+                    correct_answer: "D",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1009,
+                    year: 2017,
+                    title: "Evolução - Seleção Natural",
+                    description: "O uso indiscriminado de antibióticos tem levado ao surgimento de bactérias super-resistentes. Segundo a teoria da evolução por seleção natural, esse fenômeno ocorre porque:",
+                    alternatives: {
+                        a: "O antibiótico induz mutações nas bactérias para que se tornem resistentes.",
+                        b: "As bactérias se acostumam com o antibiótico ao longo do tempo.",
+                        c: "O antibiótico elimina as bactérias sensíveis, e as resistentes sobrevivem e se multiplicam.",
+                        d: "As bactérias trocam material genético com o antibiótico.",
+                        e: "O sistema imunológico humano enfraquece com o uso do remédio."
+                    },
+                    correct_answer: "C",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1010,
+                    year: 2019,
+                    title: "Botânica - Fotossíntese",
+                    description: "A fotossíntese ocorre em duas etapas principais: a fase fotoquímica (clara) e a fase química (escura/Ciclo de Calvin). Na fase clara, a energia luminosa é capturada e utilizada para produzir ATP e NADPH.\n\nQual é o subproduto liberado para a atmosfera durante a fase clara da fotossíntese?",
+                    alternatives: {
+                        a: "Dióxido de carbono (CO2).",
+                        b: "Glicose.",
+                        c: "Oxigênio (O2).",
+                        d: "Água.",
+                        e: "Nitrogênio."
+                    },
+                    correct_answer: "C",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                 {
+                    id: 1011,
+                    year: 2022,
+                    title: "Doenças - Viroses",
+                    description: "A Dengue, Zika e Chikungunya são doenças transmitidas pelo mesmo vetor, o mosquito Aedes aegypti. Embora sejam causadas por vírus diferentes, elas compartilham sintomas semelhantes.\n\nUma medida profilática eficaz para combater essas três doenças simultaneamente é:",
+                    alternatives: {
+                        a: "O uso de antibióticos de amplo espectro.",
+                        b: "A vacinação em massa da população.",
+                        c: "A eliminação dos criadouros do mosquito vetor.",
+                        d: "O isolamento dos pacientes infectados.",
+                        e: "O consumo de água filtrada e fervida."
+                    },
+                    correct_answer: "C",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                },
+                {
+                    id: 1012,
+                    year: 2023,
+                    title: "Genética - Leis de Mendel",
+                    description: "No cruzamento entre duas plantas heterozigotas (Aa) para uma característica de dominância completa, onde 'A' é dominante e 'a' é recessivo, qual é a proporção fenotípica esperada na descendência?",
+                    alternatives: {
+                        a: "100% dominante.",
+                        b: "50% dominante e 50% recessivo.",
+                        c: "3 dominantes para 1 recessivo (3:1).",
+                        d: "1 dominante para 1 recessivo (1:1).",
+                        e: "100% recessivo."
+                    },
+                    correct_answer: "C",
+                    discipline: "Biologia",
+                    area: "Ciências da Natureza"
+                }
+            ];
+
+            // Gerar questões extras para que a lista não pareça vazia
+            const extraQuestions = Array.from({ length: 38 }).map((_, i) => ({
+                id: 2000 + i,
+                year: 2010 + (i % 14),
+                title: `Questão Simulada ${i + 1} - ${['Botânica', 'Zoologia', 'Bioquímica', 'Genética'][i % 4]}`,
+                description: "Esta é uma questão simulada adicionada automaticamente para demonstrar a capacidade de listagem do banco de dados quando a API oficial está indisponível. O conteúdo simula o formato padrão do ENEM.",
+                alternatives: {
+                    a: "Alternativa plausível A",
+                    b: "Alternativa plausível B",
+                    c: "Alternativa correta C",
+                    d: "Alternativa plausível D",
+                    e: "Alternativa plausível E"
+                },
+                correct_answer: "C",
+                discipline: "Biologia",
+                area: "Ciências da Natureza"
+            }));
+            
+            // Combinar questões estáticas e dinâmicas
+            let filteredFallback = [...fallbackQuestions, ...extraQuestions];
+
+            // Filtro mockado
+            if (isViewAll) {
+                // Se é ver todas, mostra tudo
+            } else if (enemSearchTerm) {
+                filteredFallback = filteredFallback.filter(q => 
+                    q.description.toLowerCase().includes(enemSearchTerm.toLowerCase()) || 
+                    q.title.toLowerCase().includes(enemSearchTerm.toLowerCase())
+                );
+            }
+            
+            // Filtro de Exame Mockado
+            if (selectedExamId && !isViewAll) {
+                 const exam = enemExams.find(e => e.id.toString() === selectedExamId);
+                 if (exam) {
+                     // Filtra por ano aproximado se encontrar o exame
+                     filteredFallback = filteredFallback.filter(q => q.year === exam.year);
+                 }
+            }
+
+            setEnemQuestions(filteredFallback);
+
+        } finally {
+            setIsLoadingEnem(false);
+        }
+    };
+
+    const addToQuiz = (enemQ: EnemQuestion) => {
+        const newQuestion: Question = {
+            id: Date.now(),
+            text: enemQ.description || enemQ.title,
+            type: 'Múltipla Escolha',
+            difficulty: 'Difícil', // ENEM geralmente é considerado difícil/médio
+            points: 10,
+            source: `ENEM ${enemQ.year}`,
+            alternatives: Object.entries(enemQ.alternatives).map(([key, value]) => ({ letter: key.toUpperCase(), text: value })),
+            correctAlternative: enemQ.correct_answer
+        };
+        setQuizQuestions([...quizQuestions, newQuestion]);
+    };
+
     return (
         <div className="grid grid-cols-12 gap-6 lg:gap-8 h-full">
             <div className="col-span-12 lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
@@ -310,33 +657,140 @@ const QuizCreator = () => {
                         <p className="text-text-sub dark:text-gray-400 mt-1">Configure os parâmetros para gerar novos itens de avaliação.</p>
                     </div>
                     <div className="flex items-center gap-2 bg-white dark:bg-surface-dark p-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
-                        <button className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary/20 text-green-800 dark:text-primary">Manual</button>
-                        <button className="px-3 py-1.5 rounded-md text-sm font-medium text-text-sub dark:text-gray-400 hover:text-slate-900 dark:hover:text-white">Gerar com IA</button>
+                        <button 
+                            onClick={() => setActiveTab('manual')}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'manual' ? 'bg-primary/20 text-green-800 dark:text-primary' : 'text-text-sub dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'}`}
+                        >
+                            Manual
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('enem')}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'enem' ? 'bg-primary/20 text-green-800 dark:text-primary' : 'text-text-sub dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'}`}
+                        >
+                            Banco ENEM
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('ai')}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'ai' ? 'bg-primary/20 text-green-800 dark:text-primary' : 'text-text-sub dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'}`}
+                        >
+                            Gerar com IA
+                        </button>
                     </div>
                 </div>
-                <div className="bg-surface-light dark:bg-surface-dark rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <label className="flex flex-col gap-2">
-                            <span className="text-sm font-bold text-slate-900 dark:text-gray-200">Tipo de Pergunta</span>
-                            <select className="w-full rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white focus:border-primary focus:ring-primary">
-                                <option>Múltipla Escolha</option>
+
+                {activeTab === 'enem' ? (
+                     <div className="bg-surface-light dark:bg-surface-dark rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-6 flex-1 flex flex-col">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <select 
+                                value={selectedExamId}
+                                onChange={(e) => setSelectedExamId(e.target.value)}
+                                className="w-full sm:w-48 rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white focus:border-primary focus:ring-primary appearance-none cursor-pointer"
+                            >
+                                <option value="">Todas as Provas</option>
+                                {enemExams.map(exam => (
+                                    <option key={exam.id} value={exam.id}>
+                                        {exam.year} - {exam.color}
+                                    </option>
+                                ))}
                             </select>
-                        </label>
-                        <label className="flex flex-col gap-2">
-                             <span className="text-sm font-bold text-slate-900 dark:text-gray-200">Tópico / Tag</span>
-                             <input type="text" className="w-full rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white focus:border-primary focus:ring-primary" placeholder="ex: Mitose" />
-                        </label>
-                    </div>
-                     <div className="flex flex-col gap-2">
-                         <span className="text-sm font-bold text-slate-900 dark:text-gray-200">Enunciado da Pergunta</span>
-                         <textarea className="w-full rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 p-4 text-slate-900 dark:text-white focus:border-primary focus:ring-primary" rows={4} placeholder="Digite sua pergunta..."></textarea>
+
+                            <input 
+                                type="text" 
+                                placeholder="Pesquise por tema..." 
+                                className="flex-1 rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white focus:border-primary focus:ring-primary"
+                                value={enemSearchTerm}
+                                onChange={(e) => setEnemSearchTerm(e.target.value)}
+                            />
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => fetchEnemQuestions(false)}
+                                    disabled={isLoadingEnem}
+                                    className="px-6 py-3 rounded-lg bg-primary text-slate-900 font-bold shadow-md hover:bg-green-400 flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {isLoadingEnem ? <span className="animate-spin rounded-full h-4 w-4 border-2 border-slate-900 border-t-transparent"></span> : 'Buscar'}
+                                </button>
+                                <button 
+                                    onClick={() => fetchEnemQuestions(true)}
+                                    disabled={isLoadingEnem}
+                                    className="px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-white font-medium hover:bg-slate-50 dark:hover:bg-white/5 flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
+                                >
+                                    Ver Todas
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {isUsingFallback && (
+                            <div className="bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-200 text-xs px-4 py-2 rounded-lg flex items-center gap-2">
+                                <Icon name="wifi_off" className="text-sm" />
+                                <span>Modo Offline: API externa indisponível. Exibindo banco de questões local.</span>
+                            </div>
+                        )}
+                        
+                        <div className="flex-1 overflow-y-auto space-y-4 pr-2 max-h-[500px]">
+                            {enemQuestions.length === 0 && !isLoadingEnem && (
+                                <div className="text-center py-10 text-gray-500">
+                                    <Icon name="search_off" className="text-4xl mb-2" />
+                                    <p>Nenhuma questão encontrada ou busca não iniciada.</p>
+                                    <p className="text-xs mt-1">Selecione uma prova ou digite um tema para começar.</p>
+                                </div>
+                            )}
+                            
+                            {enemQuestions.map((q) => (
+                                <div key={q.id} className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-black/20 hover:border-primary/50 transition-colors">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-bold px-2 py-1 rounded">ENEM {q.year}</span>
+                                        {q.discipline && <span className="text-xs text-text-sub font-medium">{q.discipline}</span>}
+                                    </div>
+                                    <div className="mb-4 text-slate-800 dark:text-slate-200 text-sm leading-relaxed">
+                                        {q.title && <p className="mb-2 font-medium">{q.title}</p>}
+                                        <p>{q.description}</p>
+                                    </div>
+                                    <div className="space-y-2 mb-4">
+                                        {q.alternatives && Object.entries(q.alternatives).map(([key, text]) => (
+                                            <div key={key} className={`flex gap-2 text-sm p-2 rounded ${key.toUpperCase() === q.correct_answer ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-white/5'}`}>
+                                                <span className="font-bold w-4">{key.toUpperCase()})</span>
+                                                <span className="text-slate-600 dark:text-slate-300">{text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button 
+                                        onClick={() => addToQuiz(q)}
+                                        className="w-full py-2 rounded-lg border border-primary text-primary font-bold text-sm hover:bg-primary hover:text-slate-900 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Icon name="add_circle" /> Adicionar ao Questionário
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                      </div>
-                      <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-                         <button className="px-5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm font-bold hover:bg-slate-50 dark:hover:bg-gray-800">Limpar</button>
-                         <button className="px-5 py-2.5 rounded-lg bg-primary text-slate-900 text-sm font-bold shadow-md hover:bg-green-400 flex items-center gap-2"><Icon name="add" className="text-lg" /> Adicionar ao Quiz</button>
-                      </div>
-                </div>
+                ) : (
+                    <div className="bg-surface-light dark:bg-surface-dark rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <label className="flex flex-col gap-2">
+                                <span className="text-sm font-bold text-slate-900 dark:text-gray-200">Tipo de Pergunta</span>
+                                <select className="w-full rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white focus:border-primary focus:ring-primary">
+                                    <option>Múltipla Escolha</option>
+                                    <option>Verdadeiro ou Falso</option>
+                                    <option>Dissertativa</option>
+                                </select>
+                            </label>
+                            <label className="flex flex-col gap-2">
+                                <span className="text-sm font-bold text-slate-900 dark:text-gray-200">Tópico / Tag</span>
+                                <input type="text" className="w-full rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white focus:border-primary focus:ring-primary" placeholder="ex: Mitose" />
+                            </label>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <span className="text-sm font-bold text-slate-900 dark:text-gray-200">Enunciado da Pergunta</span>
+                            <textarea className="w-full rounded-lg bg-background-light dark:bg-background-dark border border-slate-200 dark:border-slate-800 p-4 text-slate-900 dark:text-white focus:border-primary focus:ring-primary" rows={4} placeholder="Digite sua pergunta..."></textarea>
+                        </div>
+                        <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                            <button className="px-5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm font-bold hover:bg-slate-50 dark:hover:bg-gray-800">Limpar</button>
+                            <button className="px-5 py-2.5 rounded-lg bg-primary text-slate-900 text-sm font-bold shadow-md hover:bg-green-400 flex items-center gap-2"><Icon name="add" className="text-lg" /> Adicionar ao Quiz</button>
+                        </div>
+                    </div>
+                )}
             </div>
+            
             <div className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col h-full gap-6">
                 <div className="flex flex-col gap-1">
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Prévia do Questionário</h2>
@@ -347,20 +801,27 @@ const QuizCreator = () => {
                 </div>
                 <div className="flex-grow flex flex-col bg-surface-light dark:bg-surface-dark rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden sticky top-24 max-h-[calc(100vh-8rem)]">
                      <div className="p-4 bg-primary/10 border-b border-primary/20 flex justify-between items-center">
-                        <div className="flex flex-col"><span className="text-xs uppercase font-bold text-text-sub">Questões</span><span className="text-xl font-bold text-slate-900 dark:text-white">5</span></div>
-                        <div className="flex flex-col"><span className="text-xs uppercase font-bold text-text-sub">Pontos</span><span className="text-xl font-bold text-slate-900 dark:text-white">50</span></div>
+                        <div className="flex flex-col"><span className="text-xs uppercase font-bold text-text-sub">Questões</span><span className="text-xl font-bold text-slate-900 dark:text-white">{quizQuestions.length}</span></div>
+                        <div className="flex flex-col"><span className="text-xs uppercase font-bold text-text-sub">Pontos</span><span className="text-xl font-bold text-slate-900 dark:text-white">{quizQuestions.reduce((acc, q) => acc + q.points, 0)}</span></div>
                      </div>
                      <div className="p-4 space-y-3 overflow-y-auto">
-                        {[1,2,3].map(i => (
-                             <div key={i} className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-black/20 hover:border-primary/50 cursor-move">
+                        {quizQuestions.map((q, i) => (
+                             <div key={q.id} className="p-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-black/20 hover:border-primary/50 cursor-move group relative">
                                 <div className="flex gap-3">
-                                    <span className="flex-shrink-0 size-6 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center text-xs font-bold text-text-sub">{i}</span>
-                                    <div>
-                                        <p className="text-sm text-slate-900 dark:text-white font-medium line-clamp-2">Exemplo de questão {i} sobre biologia celular?</p>
+                                    <span className="flex-shrink-0 size-6 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center text-xs font-bold text-text-sub">{i + 1}</span>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-slate-900 dark:text-white font-medium line-clamp-2">{q.text}</p>
                                         <div className="flex items-center gap-2 mt-2">
-                                            <span className="text-[10px] font-bold uppercase tracking-wide bg-blue-50 text-blue-600 px-2 py-0.5 rounded">M. Escolha</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wide bg-blue-50 text-blue-600 px-2 py-0.5 rounded">{q.type}</span>
+                                            {q.source && <span className="text-[10px] font-bold uppercase tracking-wide bg-orange-50 text-orange-600 px-2 py-0.5 rounded">{q.source}</span>}
                                         </div>
                                     </div>
+                                    <button 
+                                        onClick={() => setQuizQuestions(quizQuestions.filter(quest => quest.id !== q.id))}
+                                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 p-1 rounded transition-all"
+                                    >
+                                        <Icon name="delete" className="text-lg" />
+                                    </button>
                                 </div>
                              </div>
                         ))}

@@ -49,6 +49,33 @@ export interface Question {
   type: string;
   difficulty: 'Fácil' | 'Médio' | 'Difícil';
   points: number;
+  source?: string;
+  alternatives?: { letter: string; text: string }[];
+  correctAlternative?: string;
+}
+
+export interface EnemExam {
+  id: number;
+  year: number;
+  color: string;
+  type: string;
+}
+
+export interface EnemQuestion {
+  id: number;
+  year: number;
+  title: string; // Contexto/Texto base
+  description: string; // Enunciado
+  alternatives: {
+    a: string;
+    b: string;
+    c: string;
+    d: string;
+    e: string;
+  };
+  correct_answer: string;
+  discipline?: string;
+  area?: string;
 }
 
 export interface NewsItem {
